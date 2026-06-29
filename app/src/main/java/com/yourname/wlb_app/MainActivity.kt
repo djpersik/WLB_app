@@ -127,6 +127,11 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
     var categories by mutableStateOf<List<Category>>(emptyList())
         private set
 
+    var filterFrom by mutableStateOf<Long?>(
+        System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L // дефолт — тиждень назад
+    )
+    var filterTo by mutableStateOf<Long?>(System.currentTimeMillis())
+
     init {
         viewModelScope.launch {
             dao.getAll().collectLatest { list ->
@@ -138,7 +143,8 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
                 categories = list
                 // якщо база порожня — додаємо дефолтні категорії
                 if (list.isEmpty()) {
-                    val defaults = listOf("Сон", "Робота", "Відпочинок", "Прокрастинація", "Спорт", "Рутина")
+                    val defaults =
+                        listOf("Сон", "Робота", "Відпочинок", "Прокрастинація", "Спорт", "Рутина")
                     defaults.forEach { categoryDao.insert(Category(name = it)) }
                 }
             }
@@ -168,20 +174,35 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
 
     fun categoryNames(): List<String> = categories.map { it.name }
 
-    fun averageHoursLast7Days(category: String): Double {
-        val weekAgo = System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L
-        val relevant = entries.filter { it.category == category && it.startMillis >= weekAgo }
+    fun filteredEntries(): List<TimeEntry> {
+        val from = filterFrom ?: Long.MIN_VALUE
+        val to = filterTo ?: Long.MAX_VALUE
+        // filterTo до кінця дня
+        val toEndOfDay = to + 24 * 60 * 60 * 1000L - 1
+        return entries.filter { it.startMillis in from..toEndOfDay }
+    }
+
+    fun averageHours(category: String): Double {
+        val relevant = filteredEntries().filter { it.category == category }
         if (relevant.isEmpty()) return 0.0
-        return relevant.sumOf { durationHours(it.startMillis, it.endMillis) } / 7.0
+        val days = daysBetween(filterFrom, filterTo).coerceAtLeast(1)
+        return relevant.sumOf { durationHours(it.startMillis, it.endMillis) } / days
+    }
+
+    fun daysBetween(from: Long?, to: Long?): Int {
+        val f = from ?: return 1
+        val t = to ?: return 1
+        return ((t - f) / (24 * 60 * 60 * 1000L)).toInt() + 1
     }
 
     fun generateAdvice(): String {
-        val sleep = averageHoursLast7Days("Сон")
-        val work = averageHoursLast7Days("Робота")
-        val rest = averageHoursLast7Days("Відпочинок")
-        val procrastination = averageHoursLast7Days("Прокрастинація")
+        val sleep = averageHours("Сон")
+        val work = averageHours("Робота")
+        val rest = averageHours("Відпочинок")
+        val procrastination = averageHours("Прокрастинація")
         return when {
             entries.isEmpty() -> "Додай перший запис щоб отримати персональні поради 👋"
+            filteredEntries().isEmpty() -> "За цей період записів немає 📭"
             sleep < 6 -> "😴 Середній сон менше 6 год/день. Спробуй лягати раніше."
             work > 10 -> "💼 Робота більше 10 год/день. Це ризик вигорання."
             procrastination > 3 -> "⏳ Багато часу на прокрастинацію. Спробуй техніку Pomodoro."
@@ -198,6 +219,16 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
 @Composable
 fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = viewModel()) {
     var entryToDelete by remember { mutableStateOf<TimeEntry?>(null) }
+
+    var showFilterFrom by remember { mutableStateOf(false) }
+    var showFilterTo by remember { mutableStateOf(false) }
+
+    val filterFromState = rememberDatePickerState(
+        initialSelectedDateMillis = viewModel.filterFrom
+    )
+    val filterToState = rememberDatePickerState(
+        initialSelectedDateMillis = viewModel.filterTo
+    )
 
     Scaffold(
         topBar = {
@@ -236,7 +267,7 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
             Spacer(modifier = Modifier.height(8.dp))
 
             viewModel.categoryNames().forEach { cat ->
-                val avg = viewModel.averageHoursLast7Days(cat)
+                val avg = viewModel.averageHours(cat)
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -250,12 +281,76 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
 
             WeeklyBarChart(
                 data = viewModel.categoryNames().map { cat ->
-                    cat to viewModel.averageHoursLast7Days(cat)
+                    cat to viewModel.averageHours(cat)
                 }
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
-            Text("Останні записи", fontSize = 16.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+
+// Фільтр по даті
+            Text("Період", fontSize = 14.sp)
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { showFilterFrom = true },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = viewModel.filterFrom?.let { formatDateShort(it) } ?: "Від",
+                        fontSize = 13.sp
+                    )
+                }
+                Text("—", modifier = Modifier.align(Alignment.CenterVertically))
+                OutlinedButton(
+                    onClick = { showFilterTo = true },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = viewModel.filterTo?.let { formatDateShort(it) } ?: "До",
+                        fontSize = 13.sp
+                    )
+                }
+            }
+
+// Діалог "від"
+            if (showFilterFrom) {
+                DatePickerDialog(
+                    onDismissRequest = { showFilterFrom = false },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            viewModel.filterFrom = filterFromState.selectedDateMillis
+                            showFilterFrom = false
+                        }) { Text("Ок") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showFilterFrom = false }) { Text("Скасувати") }
+                    }
+                ) {
+                    DatePicker(state = filterFromState)
+                }
+            }
+
+// Діалог "до"
+            if (showFilterTo) {
+                DatePickerDialog(
+                    onDismissRequest = { showFilterTo = false },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            viewModel.filterTo = filterToState.selectedDateMillis
+                            showFilterTo = false
+                        }) { Text("Ок") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showFilterTo = false }) { Text("Скасувати") }
+                    }
+                ) {
+                    DatePicker(state = filterToState)
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
             if (viewModel.entries.isEmpty()) {
@@ -841,4 +936,13 @@ fun TimeScrollPicker(
             onSelectedIndexChange = onMinuteChange
         )
     }
+}
+
+fun formatDateShort(millis: Long): String {
+    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    return String.format("%02d.%02d.%d",
+        cal.get(Calendar.DAY_OF_MONTH),
+        cal.get(Calendar.MONTH) + 1,
+        cal.get(Calendar.YEAR)
+    )
 }
