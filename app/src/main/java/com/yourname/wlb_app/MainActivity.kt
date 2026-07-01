@@ -143,9 +143,12 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
                 categories = list
                 // якщо база порожня — додаємо дефолтні категорії
                 if (list.isEmpty()) {
-                    val defaults =
-                        listOf("Сон", "Робота", "Відпочинок", "Прокрастинація", "Спорт", "Рутина")
-                    defaults.forEach { categoryDao.insert(Category(name = it)) }
+                    categoryDao.insert(Category(name = "Сон", isPositive = true, targetHours = 8.0))
+                    categoryDao.insert(Category(name = "Робота", isPositive = false, targetHours = 9.0))
+                    categoryDao.insert(Category(name = "Відпочинок", isPositive = true, targetHours = 3.0))
+                    categoryDao.insert(Category(name = "Прокрастинація", isPositive = false, targetHours = 2.0))
+                    categoryDao.insert(Category(name = "Спорт", isPositive = true, targetHours = 1.0))
+                    categoryDao.insert(Category(name = "Рутина", isPositive = true, targetHours = 1.0))
                 }
             }
         }
@@ -163,9 +166,15 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { dao.delete(entry) }
     }
 
-    fun addCategory(name: String) {
+    fun addCategory(name: String, isPositive: Boolean = true, targetHours: Double = 1.0) {
         if (name.isBlank()) return
-        viewModelScope.launch { categoryDao.insert(Category(name = name.trim())) }
+        viewModelScope.launch {
+            categoryDao.insert(Category(
+                name = name.trim(),
+                isPositive = isPositive,
+                targetHours = targetHours
+            ))
+        }
     }
 
     fun deleteCategory(category: Category) {
@@ -655,18 +664,6 @@ fun PickerRow(label: String, value: String, isOpen: Boolean, onClick: () -> Unit
     }
 }
 
-fun millisToPoint(millis: Long): DateTimePoint {
-    val cal = Calendar.getInstance()
-    cal.timeInMillis = millis
-    return DateTimePoint(
-        cal.get(Calendar.DAY_OF_MONTH),
-        cal.get(Calendar.MONTH),
-        cal.get(Calendar.YEAR),
-        cal.get(Calendar.HOUR_OF_DAY),
-        cal.get(Calendar.MINUTE)
-    )
-}
-
 @Composable
 fun WeeklyBarChart(data: List<Pair<String, Double>>) {
     val barColors = listOf(
@@ -740,6 +737,8 @@ fun WeeklyBarChart(data: List<Pair<String, Double>>) {
 fun CategoriesScreen(navController: NavHostController, viewModel: EntryViewModel = viewModel()) {
     var newCategoryName by remember { mutableStateOf("") }
     var categoryToDelete by remember { mutableStateOf<Category?>(null) }
+    var isPositive by remember { mutableStateOf(true) }
+    var targetHours by remember { mutableStateOf("1") }
 
     Scaffold(
         topBar = {
@@ -758,8 +757,8 @@ fun CategoriesScreen(navController: NavHostController, viewModel: EntryViewModel
                 .fillMaxSize()
                 .padding(padding)
                 .padding(24.dp)
+                .verticalScroll(rememberScrollState())
         ) {
-            // Поле для нової категорії
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -768,14 +767,47 @@ fun CategoriesScreen(navController: NavHostController, viewModel: EntryViewModel
                 OutlinedTextField(
                     value = newCategoryName,
                     onValueChange = { newCategoryName = it },
-                    label = { Text("Нова категорія") },
+                    label = { Text("Назва") },
                     modifier = Modifier.weight(1f),
                     singleLine = true
                 )
+                OutlinedTextField(
+                    value = targetHours,
+                    onValueChange = { targetHours = it.filter { c -> c.isDigit() || c == '.' } },
+                    label = { Text("Ціль (год)") },
+                    modifier = Modifier.width(110.dp),
+                    singleLine = true
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilterChip(
+                    selected = isPositive,
+                    onClick = { isPositive = true },
+                    label = { Text("✅ Позитивна") }
+                )
+                FilterChip(
+                    selected = !isPositive,
+                    onClick = { isPositive = false },
+                    label = { Text("⚠️ Негативна") }
+                )
+                Spacer(modifier = Modifier.weight(1f))
                 Button(
                     onClick = {
-                        viewModel.addCategory(newCategoryName)
+                        viewModel.addCategory(
+                            name = newCategoryName,
+                            isPositive = isPositive,
+                            targetHours = targetHours.toDoubleOrNull() ?: 1.0
+                        )
                         newCategoryName = ""
+                        targetHours = "1"
+                        isPositive = true
                     },
                     enabled = newCategoryName.isNotBlank()
                 ) {
@@ -800,14 +832,29 @@ fun CategoriesScreen(navController: NavHostController, viewModel: EntryViewModel
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(category.name, fontSize = 15.sp)
+                        Column {
+                            Text(category.name, fontSize = 15.sp)
+                            Text(
+                                text = if (category.isPositive)
+                                    "✅ ціль: ${category.targetHours} год"
+                                else
+                                    "⚠️ межа: ${category.targetHours} год",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         IconButton(onClick = { categoryToDelete = category }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Видалити",
-                                tint = MaterialTheme.colorScheme.error)
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Видалити",
+                                tint = MaterialTheme.colorScheme.error
+                            )
                         }
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(80.dp))
         }
     }
 
