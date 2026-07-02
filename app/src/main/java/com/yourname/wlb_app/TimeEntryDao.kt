@@ -20,4 +20,7 @@ interface TimeEntryDao {
 
     @Query("SELECT * FROM entries ORDER BY startMillis DESC")
     fun getAll(): Flow<List<TimeEntry>>
+
+    @Query("DELETE FROM entries WHERE category = :categoryName")
+    suspend fun deleteByCategory(categoryName: String)
 }

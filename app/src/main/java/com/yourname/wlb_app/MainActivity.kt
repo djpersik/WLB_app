@@ -178,7 +178,10 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteCategory(category: Category) {
-        viewModelScope.launch { categoryDao.delete(category) }
+        viewModelScope.launch {
+            dao.deleteByCategory(category.name)
+            categoryDao.delete(category)
+        }
     }
 
     fun categoryNames(): List<String> = categories.map { it.name }
@@ -218,6 +221,71 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
             rest < 1 -> "🌿 Майже немає відпочинку. Додай хоча б 30 хв прогулянки."
             sleep >= 7 && work <= 8 -> "✅ Гарний баланс! Так тримати."
             else -> "⚖️ Непоганий баланс, продовжуй відстежувати."
+        }
+    }
+    fun calculateWLBIndex(): Double {
+        if (filteredEntries().isEmpty()) return 0.0
+        if (categories.isEmpty()) return 0.0
+
+        var positiveScore = 0.0
+        var positiveCount = 0
+        var negativePenalty = 0.0
+
+        categories.forEach { cat ->
+            val avg = averageHours(cat.name)
+            if (cat.isPositive) {
+                val score = (avg / cat.targetHours.coerceAtLeast(0.1)).coerceAtMost(1.0) * 100
+                positiveScore += score
+                positiveCount++
+            } else {
+                val excess = (avg - cat.targetHours.coerceAtLeast(0.1)).coerceAtLeast(0.0)
+                negativePenalty += excess * 10
+            }
+        }
+
+        if (positiveCount == 0) return 0.0
+        val base = positiveScore / positiveCount
+        return (base - negativePenalty).coerceIn(0.0, 100.0)
+    }
+
+    fun wlbIndexHistory(): List<Pair<Long, Double>> {
+        if (entries.isEmpty()) return emptyList()
+
+        val from = filterFrom ?: return emptyList()
+        val to = filterTo ?: System.currentTimeMillis()
+        val dayMillis = 24 * 60 * 60 * 1000L
+        val days = daysBetween(filterFrom, filterTo).coerceAtMost(30)
+
+        return (0 until days).map { i ->
+            val dayStart = from + i * dayMillis
+            val dayEnd = dayStart + dayMillis - 1
+
+            val dayEntries = entries.filter { it.startMillis in dayStart..dayEnd }
+
+            var positiveScore = 0.0
+            var positiveCount = 0
+            var negativePenalty = 0.0
+
+            categories.forEach { cat ->
+                val hours = dayEntries
+                    .filter { it.category == cat.name }
+                    .sumOf { durationHours(it.startMillis, it.endMillis) }
+
+                if (cat.isPositive) {
+                    val score = (hours / cat.targetHours).coerceAtMost(1.0) * 100
+                    positiveScore += score
+                    positiveCount++
+                } else {
+                    val excess = (hours - cat.targetHours).coerceAtLeast(0.0)
+                    negativePenalty += excess * 10
+                }
+            }
+
+            val index = if (positiveCount > 0) {
+                ((positiveScore / positiveCount) - negativePenalty).coerceIn(0.0, 100.0)
+            } else 0.0
+
+            dayStart to index
         }
     }
 }
@@ -271,8 +339,50 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-            Text("Середнє за тиждень (год/день)", fontSize = 16.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+
+// WLB індекс
+            val wlbIndex = viewModel.calculateWLBIndex()
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("WLB Індекс", fontSize = 16.sp)
+                        Text(
+                            text = String.format("%.0f / 100", wlbIndex),
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = when {
+                                wlbIndex >= 70 -> Color(0xFF2E7D32)
+                                wlbIndex >= 40 -> Color(0xFFFF8F00)
+                                else -> Color(0xFFE53935)
+                            }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { (wlbIndex / 100).toFloat() },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = when {
+                            wlbIndex >= 70 -> Color(0xFF2E7D32)
+                            wlbIndex >= 40 -> Color(0xFFFF8F00)
+                            else -> Color(0xFFE53935)
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Тренд за період", fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    WLBLineChart(data = viewModel.wlbIndexHistory())
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+// Статистика по категоріях
+            Text("Середнє за період (год/день)", fontSize = 16.sp)
             Spacer(modifier = Modifier.height(8.dp))
 
             viewModel.categoryNames().forEach { cat ->
@@ -293,8 +403,6 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
                     cat to viewModel.averageHours(cat)
                 }
             )
-
-            Spacer(modifier = Modifier.height(16.dp))
 
 // Фільтр по даті
             Text("Період", fontSize = 14.sp)
@@ -419,7 +527,13 @@ fun EntryScreen(navController: NavHostController, entryId: Int = -1, viewModel: 
         viewModel.entries.find { it.id == entryId }
     }
 
-    var selectedCategory by remember { mutableStateOf(existingEntry?.category ?: viewModel.categoryNames().firstOrNull() ?: "") }
+    var selectedCategory by remember { mutableStateOf(existingEntry?.category ?: "") }
+
+    LaunchedEffect(viewModel.categories) {
+        if (selectedCategory.isEmpty() && viewModel.categories.isNotEmpty()) {
+            selectedCategory = viewModel.categories.first().name
+        }
+    }
     var expanded by remember { mutableStateOf(false) }
 
     // Стани для дат
@@ -618,6 +732,9 @@ fun EntryScreen(navController: NavHostController, entryId: Int = -1, viewModel: 
 
             Button(
                 onClick = {
+                    if (endMillis <= startMillis) return@Button // ігноруємо якщо кінець раніше початку
+                    if (selectedCategory.isBlank()) return@Button
+
                     if (isEditing && existingEntry != null) {
                         viewModel.updateEntry(existingEntry.copy(
                             category = selectedCategory,
@@ -993,3 +1110,58 @@ fun formatDateShort(millis: Long): String {
         cal.get(Calendar.YEAR)
     )
 }
+
+@Composable
+fun WLBLineChart(data: List<Pair<Long, Double>>) {
+    if (data.isEmpty()) {
+        Text("Недостатньо даних для графіку", fontSize = 13.sp)
+        return
+    }
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(160.dp)
+    ) {
+        val width = size.width
+        val height = size.height
+        val padLeft = 8f
+        val padBottom = 8f
+        val padTop = 16f
+        val chartWidth = width - padLeft
+        val chartHeight = height - padBottom - padTop
+
+        val gridColor = Color(0x33888888)
+
+        // сітка
+        for (i in 0..4) {
+            val y = padTop + chartHeight * (1f - i / 4f)
+            drawLine(gridColor, Offset(padLeft, y), Offset(width, y), strokeWidth = 1f)
+        }
+
+        if (data.size < 2) return@Canvas
+
+        val points = data.mapIndexed { index, (_, value) ->
+            val x = padLeft + (index.toFloat() / (data.size - 1)) * chartWidth
+            val y = padTop + chartHeight * (1f - (value / 100f).toFloat())
+            Offset(x, y)
+        }
+
+        // лінія
+        for (i in 0 until points.size - 1) {
+            drawLine(
+                color = Color(0xFF6650A4),
+                start = points[i],
+                end = points[i + 1],
+                strokeWidth = 3f
+            )
+        }
+
+        // точки
+        points.forEach { point ->
+            drawCircle(color = Color(0xFF6650A4), radius = 6f, center = point)
+            drawCircle(color = Color.White, radius = 3f, center = point)
+        }
+    }
+}
+
