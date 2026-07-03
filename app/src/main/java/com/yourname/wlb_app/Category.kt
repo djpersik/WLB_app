@@ -7,6 +7,7 @@ import androidx.room.PrimaryKey
 data class Category(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
-    val isPositive: Boolean = true, // true = добре коли більше, false = погано коли більше
-    val targetHours: Double = 1.0    // ціль (позитивна) або межа (негативна)
+    val isPositive: Boolean = true,
+    val targetHours: Double = 1.0,
+    val showOnDashboard: Boolean = true
 )

@@ -288,6 +288,13 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
             dayStart to index
         }
     }
+    fun toggleDashboard(category: Category) {
+        viewModelScope.launch {
+            categoryDao.update(category.copy(showOnDashboard = !category.showOnDashboard))
+        }
+    }
+
+    fun dashboardCategories(): List<Category> = categories.filter { it.showOnDashboard }
 }
 
 // ===== HomeScreen =====

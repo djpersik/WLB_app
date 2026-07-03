@@ -1,5 +1,6 @@
 package com.yourname.wlb_app
 
+import androidx.room.Update
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
@@ -19,4 +20,7 @@ interface CategoryDao {
 
     @Query("SELECT COUNT(*) FROM categories")
     suspend fun count(): Int
+
+    @Update
+    suspend fun update(category: Category)
 }
