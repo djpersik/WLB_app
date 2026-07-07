@@ -295,6 +295,7 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun dashboardCategories(): List<Category> = categories.filter { it.showOnDashboard }
+
 }
 
 // ===== HomeScreen =====
@@ -302,8 +303,6 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = viewModel()) {
-    var entryToDelete by remember { mutableStateOf<TimeEntry?>(null) }
-
     var showFilterFrom by remember { mutableStateOf(false) }
     var showFilterTo by remember { mutableStateOf(false) }
 
@@ -335,85 +334,12 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(24.dp)
+                .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = viewModel.generateAdvice(),
-                    modifier = Modifier.padding(16.dp),
-                    fontSize = 15.sp
-                )
-            }
+            Spacer(modifier = Modifier.height(12.dp))
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-// WLB індекс
-            val wlbIndex = viewModel.calculateWLBIndex()
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("WLB Індекс", fontSize = 16.sp)
-                        Text(
-                            text = String.format("%.0f / 100", wlbIndex),
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = when {
-                                wlbIndex >= 70 -> Color(0xFF2E7D32)
-                                wlbIndex >= 40 -> Color(0xFFFF8F00)
-                                else -> Color(0xFFE53935)
-                            }
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LinearProgressIndicator(
-                        progress = { (wlbIndex / 100).toFloat() },
-                        modifier = Modifier.fillMaxWidth(),
-                        color = when {
-                            wlbIndex >= 70 -> Color(0xFF2E7D32)
-                            wlbIndex >= 40 -> Color(0xFFFF8F00)
-                            else -> Color(0xFFE53935)
-                        }
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Тренд за період", fontSize = 13.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    WLBLineChart(data = viewModel.wlbIndexHistory())
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-// Статистика по категоріях
-            Text("Середнє за період (год/день)", fontSize = 16.sp)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            viewModel.categoryNames().forEach { cat ->
-                val avg = viewModel.averageHours(cat)
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(cat, fontSize = 13.sp)
-                    Text(String.format("%.1f год", avg), fontSize = 13.sp)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            WeeklyBarChart(
-                data = viewModel.categoryNames().map { cat ->
-                    cat to viewModel.averageHours(cat)
-                }
-            )
-
-// Фільтр по даті
-            Text("Період", fontSize = 14.sp)
-            Spacer(modifier = Modifier.height(4.dp))
+            // Фільтр
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -439,66 +365,43 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
                 }
             }
 
-// Діалог "від"
-            if (showFilterFrom) {
-                DatePickerDialog(
-                    onDismissRequest = { showFilterFrom = false },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            viewModel.filterFrom = filterFromState.selectedDateMillis
-                            showFilterFrom = false
-                        }) { Text("Ок") }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showFilterFrom = false }) { Text("Скасувати") }
-                    }
-                ) {
-                    DatePicker(state = filterFromState)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // WLB індекс — закріплений великий модуль
+            val wlbIndex = viewModel.calculateWLBIndex()
+            WLBIndexCard(wlbIndex = wlbIndex, history = viewModel.wlbIndexHistory())
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Сітка категорій 2 колонки
+            val dashboardCats = viewModel.dashboardCategories()
+            if (dashboardCats.isEmpty()) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "Увімкни категорії в налаштуваннях ⚙️",
+                        modifier = Modifier.padding(16.dp),
+                        fontSize = 14.sp
+                    )
                 }
-            }
-
-// Діалог "до"
-            if (showFilterTo) {
-                DatePickerDialog(
-                    onDismissRequest = { showFilterTo = false },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            viewModel.filterTo = filterToState.selectedDateMillis
-                            showFilterTo = false
-                        }) { Text("Ок") }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showFilterTo = false }) { Text("Скасувати") }
-                    }
-                ) {
-                    DatePicker(state = filterToState)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (viewModel.entries.isEmpty()) {
-                Text("Записів ще немає", fontSize = 14.sp)
             } else {
-                viewModel.entries.take(10).forEach { entry ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .combinedClickable(
-                                onClick = { navController.navigate("entry/${entry.id}") },
-                                onLongClick = { entryToDelete = entry }
-                            )
+                val rows = dashboardCats.chunked(2)
+                rows.forEach { rowCats ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(entry.category, fontSize = 14.sp)
-                            Text(durationLabel(entry.startMillis, entry.endMillis), fontSize = 13.sp)
+                        rowCats.forEach { cat ->
+                            CategoryTile(
+                                category = cat,
+                                avgHours = viewModel.averageHours(cat.name),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (rowCats.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
                         }
                     }
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
             }
 
@@ -506,21 +409,126 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
         }
     }
 
-    entryToDelete?.let { entry ->
-        AlertDialog(
-            onDismissRequest = { entryToDelete = null },
-            title = { Text("Видалити запис?") },
-            text = { Text("${entry.category} — ${durationLabel(entry.startMillis, entry.endMillis)}") },
+    // Діалог "від"
+    if (showFilterFrom) {
+        DatePickerDialog(
+            onDismissRequest = { showFilterFrom = false },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.deleteEntry(entry)
-                    entryToDelete = null
-                }) { Text("Видалити") }
+                    viewModel.filterFrom = filterFromState.selectedDateMillis
+                    showFilterFrom = false
+                }) { Text("Ок") }
             },
             dismissButton = {
-                TextButton(onClick = { entryToDelete = null }) { Text("Скасувати") }
+                TextButton(onClick = { showFilterFrom = false }) { Text("Скасувати") }
             }
-        )
+        ) { DatePicker(state = filterFromState) }
+    }
+
+    // Діалог "до"
+    if (showFilterTo) {
+        DatePickerDialog(
+            onDismissRequest = { showFilterTo = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.filterTo = filterToState.selectedDateMillis
+                    showFilterTo = false
+                }) { Text("Ок") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFilterTo = false }) { Text("Скасувати") }
+            }
+        ) { DatePicker(state = filterToState) }
+    }
+}
+
+// WLB індекс картка
+@Composable
+fun WLBIndexCard(wlbIndex: Double, history: List<Pair<Long, Double>>) {
+    val color = when {
+        wlbIndex >= 70 -> Color(0xFF2E7D32)
+        wlbIndex >= 40 -> Color(0xFFFF8F00)
+        else -> Color(0xFFE53935)
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("WLB Індекс", fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = String.format("%.0f", wlbIndex),
+                        fontSize = 40.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = color
+                    )
+                }
+                Text("/ 100", fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.align(Alignment.Bottom).padding(bottom = 8.dp))
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = { (wlbIndex / 100).toFloat() },
+                modifier = Modifier.fillMaxWidth(),
+                color = color
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("Тренд", fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(modifier = Modifier.height(4.dp))
+            WLBLineChart(data = history)
+        }
+    }
+}
+
+// Плитка категорії
+@Composable
+fun CategoryTile(
+    category: Category,
+    avgHours: Double,
+    modifier: Modifier = Modifier
+) {
+    val isGood = if (category.isPositive) {
+        avgHours >= category.targetHours * 0.8
+    } else {
+        avgHours <= category.targetHours * 1.2
+    }
+
+    fun formatHours(hours: Double): String {
+        return if (hours % 1.0 == 0.0) "${hours.toInt()} год" else "$hours год"
+    }
+
+    Card(modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+        ) {
+            Text(
+                text = category.name,
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = String.format("%.1f год", avgHours),
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isGood) Color(0xFF2E7D32) else Color(0xFFE53935)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = if (category.isPositive) "ціль ${formatHours(category.targetHours)}"
+                else "межа ${formatHours(category.targetHours)}",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -897,7 +905,13 @@ fun CategoriesScreen(navController: NavHostController, viewModel: EntryViewModel
                 )
                 OutlinedTextField(
                     value = targetHours,
-                    onValueChange = { targetHours = it.filter { c -> c.isDigit() || c == '.' } },
+                    onValueChange = { input ->
+                        val filtered = input.filter { c -> c.isDigit() || c == '.' }
+                        // не дозволяємо більше однієї крапки
+                        if (filtered.count { it == '.' } <= 1) {
+                            targetHours = filtered
+                        }
+                    },
                     label = { Text("Ціль (год)") },
                     modifier = Modifier.width(110.dp),
                     singleLine = true
@@ -967,6 +981,11 @@ fun CategoriesScreen(navController: NavHostController, viewModel: EntryViewModel
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        Switch(
+                            checked = category.showOnDashboard,
+                            onCheckedChange = { viewModel.toggleDashboard(category) },
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
                         IconButton(onClick = { categoryToDelete = category }) {
                             Icon(
                                 Icons.Default.Delete,
