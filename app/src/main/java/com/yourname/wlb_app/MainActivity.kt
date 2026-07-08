@@ -44,6 +44,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.animation.animateContentSize
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,6 +67,10 @@ fun AppNavigation() {
         composable("entry/{entryId}") { backStackEntry ->
             val entryId = backStackEntry.arguments?.getString("entryId")?.toIntOrNull() ?: -1
             EntryScreen(navController, entryId = entryId)
+        }
+        composable("category/{categoryName}") { backStackEntry ->
+            val categoryName = backStackEntry.arguments?.getString("categoryName") ?: ""
+            CategoryDetailScreen(navController, categoryName)
         }
         composable("categories") { CategoriesScreen(navController) }
     }
@@ -296,6 +301,23 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dashboardCategories(): List<Category> = categories.filter { it.showOnDashboard }
 
+    fun categoryHistory(categoryName: String): List<Pair<Long, Double>> {
+        if (entries.isEmpty()) return emptyList()
+        val from = filterFrom ?: return emptyList()
+        val to = filterTo ?: System.currentTimeMillis()
+        val dayMillis = 24 * 60 * 60 * 1000L
+        val days = daysBetween(filterFrom, filterTo).coerceAtMost(30)
+
+        return (0 until days).map { i ->
+            val dayStart = from + i * dayMillis
+            val dayEnd = dayStart + dayMillis - 1
+            val hours = entries
+                .filter { it.category == categoryName && it.startMillis in dayStart..dayEnd }
+                .sumOf { durationHours(it.startMillis, it.endMillis) }
+            dayStart to hours
+        }
+    }
+
 }
 
 // ===== HomeScreen =====
@@ -305,6 +327,7 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
 fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = viewModel()) {
     var showFilterFrom by remember { mutableStateOf(false) }
     var showFilterTo by remember { mutableStateOf(false) }
+    var entryToDelete by remember { mutableStateOf<TimeEntry?>(null) }
 
     val filterFromState = rememberDatePickerState(
         initialSelectedDateMillis = viewModel.filterFrom
@@ -339,7 +362,6 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
         ) {
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Фільтр
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -367,14 +389,13 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // WLB індекс — закріплений великий модуль
             val wlbIndex = viewModel.calculateWLBIndex()
             WLBIndexCard(wlbIndex = wlbIndex, history = viewModel.wlbIndexHistory())
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Сітка категорій 2 колонки
             val dashboardCats = viewModel.dashboardCategories()
+
             if (dashboardCats.isEmpty()) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Text(
@@ -391,9 +412,12 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         rowCats.forEach { cat ->
+                            val catEntries = viewModel.filteredEntries()
+                                .filter { it.category == cat.name }
                             CategoryTile(
                                 category = cat,
                                 avgHours = viewModel.averageHours(cat.name),
+                                onClick = { navController.navigate("category/${cat.name}") },
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -409,7 +433,6 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
         }
     }
 
-    // Діалог "від"
     if (showFilterFrom) {
         DatePickerDialog(
             onDismissRequest = { showFilterFrom = false },
@@ -425,7 +448,6 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
         ) { DatePicker(state = filterFromState) }
     }
 
-    // Діалог "до"
     if (showFilterTo) {
         DatePickerDialog(
             onDismissRequest = { showFilterTo = false },
@@ -491,6 +513,7 @@ fun WLBIndexCard(wlbIndex: Double, history: List<Pair<Long, Double>>) {
 fun CategoryTile(
     category: Category,
     avgHours: Double,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isGood = if (category.isPositive) {
@@ -499,11 +522,10 @@ fun CategoryTile(
         avgHours <= category.targetHours * 1.2
     }
 
-    fun formatHours(hours: Double): String {
-        return if (hours % 1.0 == 0.0) "${hours.toInt()} год" else "$hours год"
-    }
-
-    Card(modifier = modifier) {
+    Card(
+        onClick = onClick,
+        modifier = modifier
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1137,6 +1159,11 @@ fun formatDateShort(millis: Long): String {
     )
 }
 
+
+fun formatHours(hours: Double): String {
+    return if (hours % 1.0 == 0.0) "${hours.toInt()} год" else "$hours год"
+}
+
 @Composable
 fun WLBLineChart(data: List<Pair<Long, Double>>) {
     if (data.isEmpty()) {
@@ -1188,6 +1215,147 @@ fun WLBLineChart(data: List<Pair<Long, Double>>) {
             drawCircle(color = Color(0xFF6650A4), radius = 6f, center = point)
             drawCircle(color = Color.White, radius = 3f, center = point)
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+fun CategoryDetailScreen(
+    navController: NavHostController,
+    categoryName: String,
+    viewModel: EntryViewModel = viewModel()
+) {
+    val category = viewModel.categories.find { it.name == categoryName }
+    val avgHours = viewModel.averageHours(categoryName)
+    val history = viewModel.categoryHistory(categoryName)
+    val catEntries = viewModel.filteredEntries().filter { it.category == categoryName }
+    var entryToDelete by remember { mutableStateOf<TimeEntry?>(null) }
+
+    val isGood = category?.let {
+        if (it.isPositive) avgHours >= it.targetHours * 0.8
+        else avgHours <= it.targetHours * 1.2
+    } ?: true
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(categoryName) },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Text("←", fontSize = 20.sp, modifier = Modifier.padding(start = 12.dp))
+                    }
+                }
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { navController.navigate("entry") }) {
+                Icon(Icons.Default.Add, contentDescription = "Додати запис")
+            }
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            // Головна статистика
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Середнє за період", fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = String.format("%.1f год/день", avgHours),
+                        fontSize = 36.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isGood) Color(0xFF2E7D32) else Color(0xFFE53935)
+                    )
+                    category?.let {
+                        Text(
+                            text = if (it.isPositive) "ціль: ${formatHours(it.targetHours)}"
+                            else "межа: ${formatHours(it.targetHours)}",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Графік
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Тренд за період", fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    WLBLineChart(data = history)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Записи
+            Text("Записи (${catEntries.size})", fontSize = 16.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (catEntries.isEmpty()) {
+                Text("Записів немає за цей період", fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                catEntries.forEach { entry ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .combinedClickable(
+                                onClick = { navController.navigate("entry/${entry.id}") },
+                                onLongClick = { entryToDelete = entry }
+                            )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(formatDateShort(entry.startMillis), fontSize = 13.sp)
+                                Text(
+                                    durationLabel(entry.startMillis, entry.endMillis),
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Text(
+                                String.format("%.1f год",
+                                    durationHours(entry.startMillis, entry.endMillis)),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(80.dp))
+        }
+    }
+
+    entryToDelete?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { entryToDelete = null },
+            title = { Text("Видалити запис?") },
+            text = { Text(durationLabel(entry.startMillis, entry.endMillis)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteEntry(entry)
+                    entryToDelete = null
+                }) { Text("Видалити") }
+            },
+            dismissButton = {
+                TextButton(onClick = { entryToDelete = null }) { Text("Скасувати") }
+            }
+        )
     }
 }
 
