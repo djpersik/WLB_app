@@ -318,6 +318,59 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun saveEntriesForPeriod(
+        category: String,
+        startHour: Int,
+        startMinute: Int,
+        endHour: Int,
+        endMinute: Int,
+        startDateMillis: Long,
+        endDateMillis: Long
+    ) {
+        viewModelScope.launch {
+            // нормалізуємо дати до початку дня в локальному часовому поясі
+            val startCal = Calendar.getInstance().apply {
+                timeInMillis = startDateMillis
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            val endCal = Calendar.getInstance().apply {
+                timeInMillis = endDateMillis
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+
+            val current = startCal.clone() as Calendar
+            while (!current.after(endCal)) {
+                val entryCal = current.clone() as Calendar
+
+                entryCal.set(Calendar.HOUR_OF_DAY, startHour)
+                entryCal.set(Calendar.MINUTE, startMinute)
+                entryCal.set(Calendar.SECOND, 0)
+                val entryStart = entryCal.timeInMillis
+
+                entryCal.set(Calendar.HOUR_OF_DAY, endHour)
+                entryCal.set(Calendar.MINUTE, endMinute)
+                if (endHour < startHour || (endHour == startHour && endMinute <= startMinute)) {
+                    entryCal.add(Calendar.DAY_OF_MONTH, 1)
+                }
+                val entryEnd = entryCal.timeInMillis
+
+                dao.insert(TimeEntry(
+                    category = category,
+                    startMillis = entryStart,
+                    endMillis = entryEnd
+                ))
+
+                current.add(Calendar.DAY_OF_MONTH, 1)
+            }
+        }
+    }
+
 }
 
 // ===== HomeScreen =====
@@ -564,6 +617,8 @@ fun EntryScreen(navController: NavHostController, entryId: Int = -1, viewModel: 
         viewModel.entries.find { it.id == entryId }
     }
 
+    var isRepeating by remember { mutableStateOf(false) }
+
     var selectedCategory by remember { mutableStateOf(existingEntry?.category ?: "") }
 
     LaunchedEffect(viewModel.categories) {
@@ -758,38 +813,85 @@ fun EntryScreen(navController: NavHostController, entryId: Int = -1, viewModel: 
             HorizontalDivider()
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Тривалість
-            Text(
-                "Тривалість: ${durationLabel(startMillis, endMillis)}",
-                fontSize = 15.sp,
-                modifier = Modifier.padding(start = 4.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Повторювати за період", fontSize = 15.sp)
+                    Text(
+                        if (isRepeating) "Щодня з ${String.format("%02d:%02d", startHour, startMinute)} до ${String.format("%02d:%02d", endHour, endMinute)}"
+                        else "Створить запис для кожного дня",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = isRepeating,
+                    onCheckedChange = { isRepeating = it }
+                )
+            }
+
+            if (isRepeating) {
+                Spacer(modifier = Modifier.height(8.dp))
+                val startDate = startDateState.selectedDateMillis ?: System.currentTimeMillis()
+                val endDate = endDateState.selectedDateMillis ?: System.currentTimeMillis()
+                val daysCount = ((endDate - startDate) / (24 * 60 * 60 * 1000L)).toInt() + 1
+                Text(
+                    if (daysCount > 0) "Буде створено $daysCount записів"
+                    else "⚠️ Дата кінця раніше початку",
+                    fontSize = 13.sp,
+                    color = if (daysCount > 0) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
             Button(
                 onClick = {
-                    if (endMillis <= startMillis) return@Button // ігноруємо якщо кінець раніше початку
+                    if (endMillis <= startMillis && !isRepeating) return@Button
                     if (selectedCategory.isBlank()) return@Button
 
-                    if (isEditing && existingEntry != null) {
-                        viewModel.updateEntry(existingEntry.copy(
+                    if (isRepeating) {
+                        val startDate = startDateState.selectedDateMillis ?: System.currentTimeMillis()
+                        val endDate = endDateState.selectedDateMillis ?: System.currentTimeMillis()
+                        if (endDate < startDate) return@Button
+                        viewModel.saveEntriesForPeriod(
                             category = selectedCategory,
-                            startMillis = startMillis,
-                            endMillis = endMillis
-                        ))
+                            startHour = startHour,
+                            startMinute = startMinute,
+                            endHour = endHour,
+                            endMinute = endMinute,
+                            startDateMillis = startDate,
+                            endDateMillis = endDate
+                        )
                     } else {
-                        viewModel.saveEntry(TimeEntry(
-                            category = selectedCategory,
-                            startMillis = startMillis,
-                            endMillis = endMillis
-                        ))
+                        if (isEditing && existingEntry != null) {
+                            viewModel.updateEntry(existingEntry.copy(
+                                category = selectedCategory,
+                                startMillis = startMillis,
+                                endMillis = endMillis
+                            ))
+                        } else {
+                            viewModel.saveEntry(TimeEntry(
+                                category = selectedCategory,
+                                startMillis = startMillis,
+                                endMillis = endMillis
+                            ))
+                        }
                     }
                     navController.popBackStack()
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (isEditing) "Зберегти зміни" else "Зберегти")
+                Text(when {
+                    isRepeating -> "Створити записи за період"
+                    isEditing -> "Зберегти зміни"
+                    else -> "Зберегти"
+                })
             }
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -1159,6 +1261,11 @@ fun formatDateShort(millis: Long): String {
     )
 }
 
+fun formatTimeShort(millis: Long): String {
+    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    return String.format("%02d:%02d", cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+}
+
 
 fun formatHours(hours: Double): String {
     return if (hours % 1.0 == 0.0) "${hours.toInt()} год" else "$hours год"
@@ -1321,8 +1428,13 @@ fun CategoryDetailScreen(
                             Column {
                                 Text(formatDateShort(entry.startMillis), fontSize = 13.sp)
                                 Text(
-                                    durationLabel(entry.startMillis, entry.endMillis),
+                                    "${formatTimeShort(entry.startMillis)} — ${formatTimeShort(entry.endMillis)}",
                                     fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    durationLabel(entry.startMillis, entry.endMillis),
+                                    fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
