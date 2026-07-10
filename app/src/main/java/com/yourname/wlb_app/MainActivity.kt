@@ -45,6 +45,7 @@ import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.animation.animateContentSize
+import android.content.Context
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -132,10 +133,16 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
     var categories by mutableStateOf<List<Category>>(emptyList())
         private set
 
+    private val prefs = application.getSharedPreferences("wlb_prefs", Context.MODE_PRIVATE)
+
     var filterFrom by mutableStateOf<Long?>(
-        System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L // дефолт — тиждень назад
+        prefs.getLong("filterFrom", System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L)
+            .takeIf { prefs.contains("filterFrom") }
     )
-    var filterTo by mutableStateOf<Long?>(System.currentTimeMillis())
+    var filterTo by mutableStateOf<Long?>(
+        prefs.getLong("filterTo", System.currentTimeMillis())
+            .takeIf { prefs.contains("filterTo") }
+    )
 
     init {
         viewModelScope.launch {
@@ -305,17 +312,42 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
         if (entries.isEmpty()) return emptyList()
         val from = filterFrom ?: return emptyList()
         val to = filterTo ?: System.currentTimeMillis()
-        val dayMillis = 24 * 60 * 60 * 1000L
-        val days = daysBetween(filterFrom, filterTo).coerceAtMost(30)
 
-        return (0 until days).map { i ->
-            val dayStart = from + i * dayMillis
-            val dayEnd = dayStart + dayMillis - 1
+        val startCal = Calendar.getInstance().apply {
+            timeInMillis = from
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val endCal = Calendar.getInstance().apply {
+            timeInMillis = to
+            set(Calendar.HOUR_OF_DAY, 23)
+            set(Calendar.MINUTE, 59)
+            set(Calendar.SECOND, 59)
+        }
+
+        val result = mutableListOf<Pair<Long, Double>>()
+        val current = startCal.clone() as Calendar
+
+        while (!current.after(endCal) && result.size < 30) {
+            val dayStart = current.timeInMillis
+            current.set(Calendar.HOUR_OF_DAY, 23)
+            current.set(Calendar.MINUTE, 59)
+            val dayEnd = current.timeInMillis
+
             val hours = entries
                 .filter { it.category == categoryName && it.startMillis in dayStart..dayEnd }
                 .sumOf { durationHours(it.startMillis, it.endMillis) }
-            dayStart to hours
+
+            result.add(dayStart to hours)
+
+            current.set(Calendar.HOUR_OF_DAY, 0)
+            current.set(Calendar.MINUTE, 0)
+            current.add(Calendar.DAY_OF_MONTH, 1)
         }
+
+        return result
     }
 
     fun saveEntriesForPeriod(
@@ -368,6 +400,13 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
 
                 current.add(Calendar.DAY_OF_MONTH, 1)
             }
+        }
+    }
+    fun saveFilter() {
+        prefs.edit().apply {
+            filterFrom?.let { putLong("filterFrom", it) } ?: remove("filterFrom")
+            filterTo?.let { putLong("filterTo", it) } ?: remove("filterTo")
+            apply()
         }
     }
 
@@ -492,6 +531,7 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.filterFrom = filterFromState.selectedDateMillis
+                    viewModel.saveFilter()
                     showFilterFrom = false
                 }) { Text("Ок") }
             },
@@ -507,6 +547,7 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.filterTo = filterToState.selectedDateMillis
+                    viewModel.saveFilter()
                     showFilterTo = false
                 }) { Text("Ок") }
             },
@@ -630,10 +671,10 @@ fun EntryScreen(navController: NavHostController, entryId: Int = -1, viewModel: 
 
     // Стани для дат
     val startDateState = rememberDatePickerState(
-        initialSelectedDateMillis = existingEntry?.startMillis ?: System.currentTimeMillis()
+        initialSelectedDateMillis = normalizeToUtcMidnight(existingEntry?.startMillis ?: System.currentTimeMillis())
     )
     val endDateState = rememberDatePickerState(
-        initialSelectedDateMillis = existingEntry?.endMillis ?: System.currentTimeMillis()
+        initialSelectedDateMillis = normalizeToUtcMidnight(existingEntry?.endMillis ?: System.currentTimeMillis())
     )
 
     // Стани для часу
@@ -648,17 +689,28 @@ fun EntryScreen(navController: NavHostController, entryId: Int = -1, viewModel: 
     var startMinute by remember { mutableStateOf(startCal.get(Calendar.MINUTE)) }
     var endHour by remember { mutableStateOf(endCal.get(Calendar.HOUR_OF_DAY)) }
     var endMinute by remember { mutableStateOf(endCal.get(Calendar.MINUTE)) }
+    android.util.Log.d("WLB_TIME", "startHour=$startHour startMinute=$startMinute")
+    android.util.Log.d("WLB_TIME", "startHour=$endHour startMinute=$endMinute")
 
     // Який пікер зараз відкритий
     var openPicker by remember { mutableStateOf<String?>(null) }
     // "startDate", "startTime", "endDate", "endTime", null
 
     fun buildMillis(dateState: DatePickerState, hour: Int, minute: Int): Long {
-        val cal = Calendar.getInstance()
-        cal.timeInMillis = dateState.selectedDateMillis ?: System.currentTimeMillis()
-        cal.set(Calendar.HOUR_OF_DAY, hour)
-        cal.set(Calendar.MINUTE, minute)
-        cal.set(Calendar.SECOND, 0)
+        val utcMillis = dateState.selectedDateMillis ?: System.currentTimeMillis()
+        // конвертуємо UTC північ в локальну дату
+        val utcCal = Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+            timeInMillis = utcMillis
+        }
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.YEAR, utcCal.get(Calendar.YEAR))
+            set(Calendar.MONTH, utcCal.get(Calendar.MONTH))
+            set(Calendar.DAY_OF_MONTH, utcCal.get(Calendar.DAY_OF_MONTH))
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
         return cal.timeInMillis
     }
 
@@ -1158,8 +1210,13 @@ fun ScrollPicker(
     )
     val flingBehavior = rememberSnapFlingBehavior(lazyListState = listState)
 
+    var isUserScrolling by remember { mutableStateOf(false) }
+
     LaunchedEffect(listState.isScrollInProgress) {
-        if (!listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            isUserScrolling = true
+        } else if (isUserScrolling) {
+            isUserScrolling = false
             val centerIndex = listState.firstVisibleItemIndex
             val clampedIndex = centerIndex.coerceIn(0, items.size - 1)
             if (clampedIndex != selectedIndex) {
@@ -1259,6 +1316,19 @@ fun formatDateShort(millis: Long): String {
         cal.get(Calendar.MONTH) + 1,
         cal.get(Calendar.YEAR)
     )
+}
+
+fun normalizeToUtcMidnight(millis: Long): Long {
+    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    val year = cal.get(Calendar.YEAR)
+    val month = cal.get(Calendar.MONTH)
+    val day = cal.get(Calendar.DAY_OF_MONTH)
+    // UTC календар для DatePicker
+    val utcCal = Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+        set(year, month, day, 0, 0, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    return utcCal.timeInMillis
 }
 
 fun formatTimeShort(millis: Long): String {
