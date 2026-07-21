@@ -46,6 +46,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.animation.animateContentSize
 import android.content.Context
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -410,6 +412,39 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    var aiAdvice by mutableStateOf<String?>(null)
+    var isLoadingAdvice by mutableStateOf(false)
+
+    fun fetchAdvice() {
+        if (isLoadingAdvice) return
+        viewModelScope.launch {
+            isLoadingAdvice = true
+            aiAdvice = null
+
+            val stats = categories.joinToString("\n") { cat ->
+                val avg = averageHours(cat.name)
+                val type = if (cat.isPositive) "позитивна (ціль ${cat.targetHours} год)"
+                else "негативна (межа ${cat.targetHours} год)"
+                "- ${cat.name}: середнє ${String.format(java.util.Locale.getDefault(), "%.1f", avg)} год/день ($type)"
+            }
+
+            val days = daysBetween(filterFrom, filterTo)
+            val prompt = """
+            Ти експерт з work-life balance. Проаналізуй статистику користувача за $days днів і дай коротку персоналізовану пораду українською мовою (2-3 речення максимум).
+            
+            Статистика по категоріях (середнє годин на день):
+            $stats
+            
+            WLB індекс: ${String.format(java.util.Locale.getDefault(), "%.0f", calculateWLBIndex())}/100
+            
+            Дай конкретну actionable пораду що покращити. Будь прямим і конкретним.
+        """.trimIndent()
+
+            aiAdvice = GeminiService.getAdvice(prompt)
+            isLoadingAdvice = false
+        }
+    }
+
 }
 
 // ===== HomeScreen =====
@@ -483,6 +518,41 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
 
             val wlbIndex = viewModel.calculateWLBIndex()
             WLBIndexCard(wlbIndex = wlbIndex, history = viewModel.wlbIndexHistory())
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Порада", fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        TextButton(
+                            onClick = { viewModel.fetchAdvice() },
+                            enabled = !viewModel.isLoadingAdvice
+                        ) {
+                            Text(if (viewModel.isLoadingAdvice) "Завантаження..." else "Оновити")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    if (viewModel.isLoadingAdvice) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text(
+                            text = viewModel.aiAdvice ?: viewModel.generateAdvice(),
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
 
