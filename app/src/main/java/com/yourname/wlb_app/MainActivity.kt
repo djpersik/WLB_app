@@ -463,6 +463,12 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
         initialSelectedDateMillis = viewModel.filterTo
     )
 
+    LaunchedEffect(Unit) {
+        if (viewModel.aiAdvice == null) {
+            viewModel.fetchAdvice()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(

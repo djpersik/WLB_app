@@ -9,6 +9,7 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import io.ktor.client.statement.bodyAsText
 
 @Serializable
 data class GeminiRequest(val contents: List<GeminiContent>)
@@ -34,8 +35,9 @@ object GeminiService {
 
     suspend fun getAdvice(prompt: String): String {
         return try {
-            val response: GeminiResponse = client.post(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${BuildConfig.GEMINI_API_KEY}"
+            android.util.Log.d("Gemini", "Sending request...")
+            val rawResponse = client.post(
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${BuildConfig.GEMINI_API_KEY}"
             ) {
                 contentType(ContentType.Application.Json)
                 setBody(GeminiRequest(
@@ -43,11 +45,16 @@ object GeminiService {
                         parts = listOf(GeminiPart(text = prompt))
                     ))
                 ))
-            }.body()
+            }
+            val bodyText = rawResponse.bodyAsText()
+            android.util.Log.d("Gemini", "Raw response: $bodyText")
+            val response = Json { ignoreUnknownKeys = true }.decodeFromString<GeminiResponse>(bodyText)
             response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
                 ?: "Не вдалось отримати пораду"
         } catch (e: Exception) {
+            android.util.Log.e("Gemini", "Error: ${e::class.simpleName}: ${e.message}")
             "Помилка: ${e.message}"
         }
     }
+
 }
