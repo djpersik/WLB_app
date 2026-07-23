@@ -158,11 +158,41 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
                 // якщо база порожня — додаємо дефолтні категорії
                 if (list.isEmpty()) {
                     categoryDao.insert(Category(name = "Сон", isPositive = true, targetHours = 8.0))
-                    categoryDao.insert(Category(name = "Робота", isPositive = false, targetHours = 9.0))
-                    categoryDao.insert(Category(name = "Відпочинок", isPositive = true, targetHours = 3.0))
-                    categoryDao.insert(Category(name = "Прокрастинація", isPositive = false, targetHours = 2.0))
-                    categoryDao.insert(Category(name = "Спорт", isPositive = true, targetHours = 1.0))
-                    categoryDao.insert(Category(name = "Рутина", isPositive = true, targetHours = 1.0))
+                    categoryDao.insert(
+                        Category(
+                            name = "Робота",
+                            isPositive = false,
+                            targetHours = 9.0
+                        )
+                    )
+                    categoryDao.insert(
+                        Category(
+                            name = "Відпочинок",
+                            isPositive = true,
+                            targetHours = 3.0
+                        )
+                    )
+                    categoryDao.insert(
+                        Category(
+                            name = "Прокрастинація",
+                            isPositive = false,
+                            targetHours = 2.0
+                        )
+                    )
+                    categoryDao.insert(
+                        Category(
+                            name = "Спорт",
+                            isPositive = true,
+                            targetHours = 1.0
+                        )
+                    )
+                    categoryDao.insert(
+                        Category(
+                            name = "Рутина",
+                            isPositive = true,
+                            targetHours = 1.0
+                        )
+                    )
                 }
             }
         }
@@ -183,11 +213,13 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
     fun addCategory(name: String, isPositive: Boolean = true, targetHours: Double = 1.0) {
         if (name.isBlank()) return
         viewModelScope.launch {
-            categoryDao.insert(Category(
-                name = name.trim(),
-                isPositive = isPositive,
-                targetHours = targetHours
-            ))
+            categoryDao.insert(
+                Category(
+                    name = name.trim(),
+                    isPositive = isPositive,
+                    targetHours = targetHours
+                )
+            )
         }
     }
 
@@ -237,6 +269,7 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
             else -> "⚖️ Непоганий баланс, продовжуй відстежувати."
         }
     }
+
     fun calculateWLBIndex(): Double {
         if (filteredEntries().isEmpty()) return 0.0
         if (categories.isEmpty()) return 0.0
@@ -302,6 +335,7 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
             dayStart to index
         }
     }
+
     fun toggleDashboard(category: Category) {
         viewModelScope.launch {
             categoryDao.update(category.copy(showOnDashboard = !category.showOnDashboard))
@@ -394,16 +428,19 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val entryEnd = entryCal.timeInMillis
 
-                dao.insert(TimeEntry(
-                    category = category,
-                    startMillis = entryStart,
-                    endMillis = entryEnd
-                ))
+                dao.insert(
+                    TimeEntry(
+                        category = category,
+                        startMillis = entryStart,
+                        endMillis = entryEnd
+                    )
+                )
 
                 current.add(Calendar.DAY_OF_MONTH, 1)
             }
         }
     }
+
     fun saveFilter() {
         prefs.edit().apply {
             filterFrom?.let { putLong("filterFrom", it) } ?: remove("filterFrom")
@@ -421,30 +458,92 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
             isLoadingAdvice = true
             aiAdvice = null
 
-            val stats = categories.joinToString("\n") { cat ->
+            // Статистика за поточний фільтр
+            val currentStats = categories.joinToString("\n") { cat ->
                 val avg = averageHours(cat.name)
-                val type = if (cat.isPositive) "позитивна (ціль ${cat.targetHours} год)"
-                else "негативна (межа ${cat.targetHours} год)"
-                "- ${cat.name}: середнє ${String.format(java.util.Locale.getDefault(), "%.1f", avg)} год/день ($type)"
+                val type = if (cat.isPositive) "ціль ${cat.targetHours} год"
+                else "межа ${cat.targetHours} год"
+                "- ${cat.name}: ${
+                    String.format(
+                        java.util.Locale.getDefault(),
+                        "%.1f",
+                        avg
+                    )
+                } год/день ($type)"
+            }
+
+            // Статистика за останні 7 днів
+            val weekStats = categories.joinToString("\n") { cat ->
+                val weekAgo = System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L
+                val relevant =
+                    entries.filter { it.category == cat.name && it.startMillis >= weekAgo }
+                val avg = if (relevant.isEmpty()) 0.0
+                else relevant.sumOf { durationHours(it.startMillis, it.endMillis) } / 7.0
+                "- ${cat.name}: ${
+                    String.format(
+                        java.util.Locale.getDefault(),
+                        "%.1f",
+                        avg
+                    )
+                } год/день"
+            }
+
+            // Статистика за останні 30 днів
+            val monthStats = categories.joinToString("\n") { cat ->
+                val monthAgo = System.currentTimeMillis() - 30 * 24 * 60 * 60 * 1000L
+                val relevant =
+                    entries.filter { it.category == cat.name && it.startMillis >= monthAgo }
+                val avg = if (relevant.isEmpty()) 0.0
+                else relevant.sumOf { durationHours(it.startMillis, it.endMillis) } / 30.0
+                "- ${cat.name}: ${
+                    String.format(
+                        java.util.Locale.getDefault(),
+                        "%.1f",
+                        avg
+                    )
+                } год/день"
             }
 
             val days = daysBetween(filterFrom, filterTo)
+            val wlb = String.format(java.util.Locale.getDefault(), "%.0f", calculateWLBIndex())
+
             val prompt = """
-            Ти експерт з work-life balance. Проаналізуй статистику користувача за $days днів і дай коротку персоналізовану пораду українською мовою (2-3 речення максимум).
+            Ти — досвідчений персональний коуч із продуктивності, експерт із біохакінгу та поведінкової психології. Твоє завдання — проаналізувати часові показники користувача з додатку трекінгу життя та надати персоналізовані, практичні поради для покращення якості життя, продуктивності та здоров'я. Проаналізуй динаміку і дай конкретну пораду українською (2-3 речення максимум).
             
-            Статистика по категоріях (середнє годин на день):
-            $stats
+            Вибраний період ($days днів):
+            $currentStats
             
-            WLB індекс: ${String.format(java.util.Locale.getDefault(), "%.0f", calculateWLBIndex())}/100
+            Останні 7 днів:
+            $weekStats
             
-            Дай конкретну actionable пораду що покращити. Будь прямим і конкретним.
+            Останні 30 днів:
+            $monthStats
+            
+            WLB індекс зараз: $wlb/100
+            
+            1. 📊 Експрес-діагностика поточного стану:
+            Коротко опиши, що ти бачиш у цих цифрах. Який баланс сил? Де головний «перекіс» (наприклад, дефіцит сну, надлишок прокрастинації чи перепрацювання)?
+
+            2. 🔬 Науковий контекст та дослідження:
+            Наведи 1-2 конкретні наукові факти чи дослідження, які безпосередньо пов'язані з проблемою користувача. 
+            (Наприклад: якщо замало сну — згадай дослідження про когнітивні порушення через дефіцит сну; якщо багато прокрастинації — згадай психологічні причини прокрастинації як механізму регуляції емоцій, або дослідження про шкоду сидячого способу життя тощо). Пиши простою мовою, але з посиланням на наукову логіку.
+
+            3. 🎯 3 конкретні кроки для покращення (Action Plan):
+            Дай три чіткі, реалістичні рекомендації, які можна впровадити вже сьогодні. Не використовуй загальні фрази на кшталт «менше прокрастинуй» або «більше спи». Натомість запропонуй техніки (наприклад: метод Помодоро, правило 5 хвилин, вечірній цифровий детокс за 1 год до сну, перенесення важких завдань на хронотипний пік тощо), спираючись на надані цифри.
+            
+            Правила відповіді:
+            - Одна найважливіша порада, не список
+            - Конкретна дія з часом або числом (не "спи більше" а "лягай о 23:00 щоб мати 8 год сну")
+            - Якщо є тренд — згадай його ("за місяць сон покращився але...")
+            - Якщо індекс >70 — похвали коротко і дай пораду для росту
+            - Якщо даних мало — скажи що потрібно більше записів для точного аналізу
         """.trimIndent()
 
+            android.util.Log.d("Gemini", "Stats: $currentStats")
             aiAdvice = GeminiService.getAdvice(prompt)
             isLoadingAdvice = false
         }
     }
-
 }
 
 // ===== HomeScreen =====
@@ -463,8 +562,8 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
         initialSelectedDateMillis = viewModel.filterTo
     )
 
-    LaunchedEffect(Unit) {
-        if (viewModel.aiAdvice == null) {
+    LaunchedEffect(viewModel.categories, viewModel.entries) {
+        if (viewModel.categories.isNotEmpty() && viewModel.aiAdvice == null) {
             viewModel.fetchAdvice()
         }
     }
