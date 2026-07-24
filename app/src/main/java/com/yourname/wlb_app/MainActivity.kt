@@ -449,14 +449,14 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    var aiAdvice by mutableStateOf<String?>(null)
+    var aiAdviceShort by mutableStateOf<String?>(null)
+    var aiAdviceDetailed by mutableStateOf<String?>(null)
     var isLoadingAdvice by mutableStateOf(false)
 
     fun fetchAdvice() {
         if (isLoadingAdvice) return
         viewModelScope.launch {
             isLoadingAdvice = true
-            aiAdvice = null
 
             // Статистика за поточний фільтр
             val currentStats = categories.joinToString("\n") { cat ->
@@ -508,39 +508,26 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
             val wlb = String.format(java.util.Locale.getDefault(), "%.0f", calculateWLBIndex())
 
             val prompt = """
-            Ти — досвідчений персональний коуч із продуктивності, експерт із біохакінгу та поведінкової психології. Твоє завдання — проаналізувати часові показники користувача з додатку трекінгу життя та надати персоналізовані, практичні поради для покращення якості життя, продуктивності та здоров'я. Проаналізуй динаміку і дай конкретну пораду українською (2-3 речення максимум).
-            
-            Вибраний період ($days днів):
-            $currentStats
-            
-            Останні 7 днів:
-            $weekStats
-            
-            Останні 30 днів:
-            $monthStats
-            
-            WLB індекс зараз: $wlb/100
-            
-            1. 📊 Експрес-діагностика поточного стану:
-            Коротко опиши, що ти бачиш у цих цифрах. Який баланс сил? Де головний «перекіс» (наприклад, дефіцит сну, надлишок прокрастинації чи перепрацювання)?
-
-            2. 🔬 Науковий контекст та дослідження:
-            Наведи 1-2 конкретні наукові факти чи дослідження, які безпосередньо пов'язані з проблемою користувача. 
-            (Наприклад: якщо замало сну — згадай дослідження про когнітивні порушення через дефіцит сну; якщо багато прокрастинації — згадай психологічні причини прокрастинації як механізму регуляції емоцій, або дослідження про шкоду сидячого способу життя тощо). Пиши простою мовою, але з посиланням на наукову логіку.
-
-            3. 🎯 3 конкретні кроки для покращення (Action Plan):
-            Дай три чіткі, реалістичні рекомендації, які можна впровадити вже сьогодні. Не використовуй загальні фрази на кшталт «менше прокрастинуй» або «більше спи». Натомість запропонуй техніки (наприклад: метод Помодоро, правило 5 хвилин, вечірній цифровий детокс за 1 год до сну, перенесення важких завдань на хронотипний пік тощо), спираючись на надані цифри.
-            
-            Правила відповіді:
-            - Одна найважливіша порада, не список
-            - Конкретна дія з часом або числом (не "спи більше" а "лягай о 23:00 щоб мати 8 год сну")
-            - Якщо є тренд — згадай його ("за місяць сон покращився але...")
-            - Якщо індекс >70 — похвали коротко і дай пораду для росту
-            - Якщо даних мало — скажи що потрібно більше записів для точного аналізу
+        Ти — досвідчений персональний коуч із продуктивності та біохакінгу. Проаналізуй статистику і поверни ТІЛЬКИ валідний JSON без жодного тексту до чи після, без markdown, без ```json.
+    
+        Вибраний період ($days днів):
+        $currentStats
+    
+        Останні 7 днів:
+        $weekStats
+    
+        Останні 30 днів:
+        $monthStats
+    
+        WLB індекс: $wlb/100
+    
+        Поверни JSON у форматі:
+        {"short":"2-3 речення. Головна проблема і одна конкретна дія з числом або часом.","detailed":"📊 Діагностика: ...\n\n🔬 Наука: 1-2 факти пов'язані з проблемою.\n\n🎯 План:\n1. ...\n2. ...\n3. ..."}
         """.trimIndent()
 
-            android.util.Log.d("Gemini", "Stats: $currentStats")
-            aiAdvice = GeminiService.getAdvice(prompt)
+            val result = GeminiService.getStructuredAdvice(prompt)
+            aiAdviceShort = result.short
+            aiAdviceDetailed = result.detailed
             isLoadingAdvice = false
         }
     }
@@ -562,8 +549,11 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
         initialSelectedDateMillis = viewModel.filterTo
     )
 
-    LaunchedEffect(viewModel.categories, viewModel.entries) {
-        if (viewModel.categories.isNotEmpty() && viewModel.aiAdvice == null) {
+    val categoriesSize = viewModel.categories.size
+    val entriesSize = viewModel.entries.size
+
+    LaunchedEffect(categoriesSize, entriesSize) {
+        if (categoriesSize > 0 && viewModel.aiAdviceShort == null) {
             viewModel.fetchAdvice()
         }
     }
@@ -626,6 +616,8 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            var showDetailedAdvice by remember { mutableStateOf(false) }
+
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -633,10 +625,8 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            "Порада", fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text("Порада", fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                         TextButton(
                             onClick = { viewModel.fetchAdvice() },
                             enabled = !viewModel.isLoadingAdvice
@@ -646,15 +636,25 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     if (viewModel.isLoadingAdvice) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.dp
-                        )
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                     } else {
-                        Text(
-                            text = viewModel.aiAdvice ?: viewModel.generateAdvice(),
-                            fontSize = 14.sp
-                        )
+                        val shortText = viewModel.aiAdviceShort ?: viewModel.generateAdvice()
+                        Text(text = shortText, fontSize = 14.sp)
+
+                        if (viewModel.aiAdviceDetailed != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(
+                                onClick = { showDetailedAdvice = !showDetailedAdvice },
+                                modifier = Modifier.padding(0.dp)
+                            ) {
+                                Text(if (showDetailedAdvice) "Згорнути ▲" else "Детальніше ▼",
+                                    fontSize = 12.sp)
+                            }
+                            if (showDetailedAdvice) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(text = viewModel.aiAdviceDetailed!!, fontSize = 13.sp)
+                            }
+                        }
                     }
                 }
             }

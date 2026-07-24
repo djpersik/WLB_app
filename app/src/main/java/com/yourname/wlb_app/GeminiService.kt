@@ -26,6 +26,12 @@ data class GeminiResponse(val candidates: List<GeminiCandidate>? = null)
 @Serializable
 data class GeminiCandidate(val content: GeminiContent? = null)
 
+@Serializable
+data class AdviceResponse(
+    val short: String = "",
+    val detailed: String = ""
+)
+
 object GeminiService {
     private val client = HttpClient(Android) {
         install(ContentNegotiation) {
@@ -33,9 +39,8 @@ object GeminiService {
         }
     }
 
-    suspend fun getAdvice(prompt: String): String {
+    suspend fun getStructuredAdvice(prompt: String): AdviceResponse {
         return try {
-            android.util.Log.d("Gemini", "Sending request...")
             val rawResponse = client.post(
                 "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${BuildConfig.GEMINI_API_KEY}"
             ) {
@@ -48,13 +53,30 @@ object GeminiService {
             }
             val bodyText = rawResponse.bodyAsText()
             android.util.Log.d("Gemini", "Raw response: $bodyText")
+
             val response = Json { ignoreUnknownKeys = true }.decodeFromString<GeminiResponse>(bodyText)
-            response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                ?: "Не вдалось отримати пораду"
+            val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text ?: ""
+
+            android.util.Log.d("Gemini", "Text: $text")
+
+            // текст вже є JSON рядком — парсимо напряму
+            try {
+                Json { ignoreUnknownKeys = true }.decodeFromString<AdviceResponse>(text)
+            } catch (e: Exception) {
+                // якщо не вдалось — шукаємо JSON в тексті
+                val start = text.indexOf('{')
+                val end = text.lastIndexOf('}')
+                if (start != -1 && end != -1 && end > start) {
+                    val jsonPart = text.substring(start, end + 1)
+                    android.util.Log.d("Gemini", "JSON part: $jsonPart")
+                    Json { ignoreUnknownKeys = true }.decodeFromString<AdviceResponse>(jsonPart)
+                } else {
+                    AdviceResponse(short = text, detailed = text)
+                }
+            }
         } catch (e: Exception) {
-            android.util.Log.e("Gemini", "Error: ${e::class.simpleName}: ${e.message}")
-            "Помилка: ${e.message}"
+            android.util.Log.e("Gemini", "Error: ${e.message}")
+            AdviceResponse(short = "Помилка отримання поради", detailed = e.message ?: "")
         }
     }
-
 }
