@@ -66,12 +66,11 @@ fun AppNavigation() {
     val navController = rememberNavController()
     NavHost(navController = navController, startDestination = "home") {
         composable("home") { HomeScreen(navController) }
-        composable("entry") { EntryScreen(navController, entryId = -1) }
         composable("entry/{entryId}") { backStackEntry ->
             val entryId = backStackEntry.arguments?.getString("entryId")?.toIntOrNull() ?: -1
             EntryScreen(navController, entryId = entryId)
         }
-        composable("category/{categoryName}") { backStackEntry ->
+        composable("category_detail/{categoryName}") { backStackEntry ->
             val categoryName = backStackEntry.arguments?.getString("categoryName") ?: ""
             CategoryDetailScreen(navController, categoryName)
         }
@@ -570,7 +569,11 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { navController.navigate("entry") }) {
+            FloatingActionButton(onClick = {
+                navController.navigate("entry/-1") {
+                    launchSingleTop = true
+                }
+            }) {
                 Icon(Icons.Default.Add, contentDescription = "Додати запис")
             }
         }
@@ -672,6 +675,7 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
                     )
                 }
             } else {
+                var lastClickTime by remember { mutableStateOf(0L) }
                 val rows = dashboardCats.chunked(2)
                 rows.forEach { rowCats ->
                     Row(
@@ -679,12 +683,22 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         rowCats.forEach { cat ->
-                            val catEntries = viewModel.filteredEntries()
-                                .filter { it.category == cat.name }
                             CategoryTile(
                                 category = cat,
                                 avgHours = viewModel.averageHours(cat.name),
-                                onClick = { navController.navigate("category/${cat.name}") },
+                                onClick = {
+                                    val now = System.currentTimeMillis()
+                                    if (now - lastClickTime > 500) {
+                                        lastClickTime = now
+                                        navController.navigate("category_detail/${cat.name}") {
+                                            launchSingleTop = true
+                                            popUpTo("home") {
+                                                inclusive = false
+                                                saveState = true
+                                            }
+                                        }
+                                    }
+                                },
                                 modifier = Modifier.weight(1f)
                             )
                         }
