@@ -923,7 +923,7 @@ fun EntryScreen(navController: NavHostController, entryId: Int = -1, viewModel: 
                 title = { Text(if (isEditing) "Редагувати запис" else "Новий запис") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Text("←", fontSize = 20.sp, modifier = Modifier.padding(start = 12.dp))
+                        Text("‹", fontSize = 28.sp, modifier = Modifier.padding(start = 12.dp))
                     }
                 }
             )
@@ -1243,7 +1243,7 @@ fun CategoriesScreen(navController: NavHostController, viewModel: EntryViewModel
                 title = { Text("Категорії") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Text("←", fontSize = 20.sp, modifier = Modifier.padding(start = 12.dp))
+                        Text("‹", fontSize = 28.sp, modifier = Modifier.padding(start = 12.dp))
                     }
                 }
             )
@@ -1272,12 +1272,11 @@ fun CategoriesScreen(navController: NavHostController, viewModel: EntryViewModel
                     value = targetHours,
                     onValueChange = { input ->
                         val filtered = input.filter { c -> c.isDigit() || c == '.' }
-                        // не дозволяємо більше однієї крапки
                         if (filtered.count { it == '.' } <= 1) {
                             targetHours = filtered
                         }
                     },
-                    label = { Text("Ціль (год)") },
+                    label = { Text(if (isPositive) "Ціль (год)" else "Межа (год)") },
                     modifier = Modifier.width(110.dp),
                     singleLine = true
                 )
@@ -1349,7 +1348,13 @@ fun CategoriesScreen(navController: NavHostController, viewModel: EntryViewModel
                         Switch(
                             checked = category.showOnDashboard,
                             onCheckedChange = { viewModel.toggleDashboard(category) },
-                            modifier = Modifier.padding(end = 8.dp)
+                            modifier = Modifier.padding(end = 8.dp),
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                uncheckedThumbColor = Color(0xFF9E9E9E),
+                                uncheckedTrackColor = Color(0xFF616161)
+                            )
                         )
                         IconButton(onClick = { categoryToDelete = category }) {
                             Icon(
@@ -1584,6 +1589,7 @@ fun WLBLineChart(data: List<Pair<Long, Double>>) {
     }
 }
 
+@JvmOverloads
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun CategoryDetailScreen(
@@ -1608,7 +1614,7 @@ fun CategoryDetailScreen(
                 title = { Text(categoryName) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Text("←", fontSize = 20.sp, modifier = Modifier.padding(start = 12.dp))
+                        Text("‹", fontSize = 28.sp, modifier = Modifier.padding(start = 12.dp))
                     }
                 }
             )
@@ -1675,7 +1681,7 @@ fun CategoryDetailScreen(
                             .fillMaxWidth()
                             .padding(vertical = 4.dp)
                             .combinedClickable(
-                                onClick = { navController.navigate("entry/${entry.id}") },
+                                onClick = { },
                                 onLongClick = { entryToDelete = entry }
                             )
                     ) {
