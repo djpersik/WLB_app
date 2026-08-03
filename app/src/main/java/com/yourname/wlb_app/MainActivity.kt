@@ -48,6 +48,10 @@ import androidx.compose.animation.animateContentSize
 import android.content.Context
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,19 +65,62 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
-    NavHost(navController = navController, startDestination = "home") {
+    NavHost(
+        navController = navController,
+        startDestination = "home",
+        enterTransition = { fadeIn(animationSpec = tween(180, easing = FastOutSlowInEasing)) },
+        exitTransition = { fadeOut(animationSpec = tween(120, easing = FastOutLinearInEasing)) },
+        popEnterTransition = { fadeIn(animationSpec = tween(180, easing = FastOutSlowInEasing)) },
+        popExitTransition = { fadeOut(animationSpec = tween(120, easing = FastOutLinearInEasing)) }
+    ) {
         composable("home") { HomeScreen(navController) }
-        composable("entry/{entryId}") { backStackEntry ->
+
+        composable(
+            "entry/{entryId}",
+            enterTransition = {
+                fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing)) +
+                        slideInVertically(
+                            initialOffsetY = { it / 5 },
+                            animationSpec = tween(200, easing = FastOutSlowInEasing)
+                        )
+            },
+            popExitTransition = {
+                fadeOut(animationSpec = tween(150, easing = FastOutLinearInEasing)) +
+                        slideOutVertically(
+                            targetOffsetY = { it / 5 },
+                            animationSpec = tween(150, easing = FastOutLinearInEasing)
+                        )
+            }
+        ) { backStackEntry ->
             val entryId = backStackEntry.arguments?.getString("entryId")?.toIntOrNull() ?: -1
             EntryScreen(navController, entryId = entryId)
         }
-        composable("category_detail/{categoryName}") { backStackEntry ->
+
+        composable(
+            "category_detail/{categoryName}",
+            enterTransition = {
+                fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing)) +
+                        slideInHorizontally(
+                            initialOffsetX = { it / 4 },
+                            animationSpec = tween(200, easing = FastOutSlowInEasing)
+                        )
+            },
+            popExitTransition = {
+                fadeOut(animationSpec = tween(150, easing = FastOutLinearInEasing)) +
+                        slideOutHorizontally(
+                            targetOffsetX = { it / 4 },
+                            animationSpec = tween(150, easing = FastOutLinearInEasing)
+                        )
+            }
+        ) { backStackEntry ->
             val categoryName = backStackEntry.arguments?.getString("categoryName") ?: ""
             CategoryDetailScreen(navController, categoryName)
         }
+
         composable("categories") { CategoriesScreen(navController) }
     }
 }
@@ -1350,8 +1397,8 @@ fun CategoriesScreen(navController: NavHostController, viewModel: EntryViewModel
                             onCheckedChange = { viewModel.toggleDashboard(category) },
                             modifier = Modifier.padding(end = 8.dp),
                             colors = SwitchDefaults.colors(
-                                checkedThumbColor = MaterialTheme.colorScheme.primary,
-                                checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                checkedThumbColor = Color(0xFF4CAF50),
+                                checkedTrackColor = Color(0xFF4CAF50).copy(alpha = 0.5f),
                                 uncheckedThumbColor = Color(0xFF9E9E9E),
                                 uncheckedTrackColor = Color(0xFF616161)
                             )

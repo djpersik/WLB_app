@@ -37,6 +37,7 @@ androidx-compose-material-icons = { group = "androidx.compose.material", name = 
 ktor-client-android = { group = "io.ktor", name = "ktor-client-android", version.ref = "ktor" }
 ktor-client-content-negotiation = { group = "io.ktor", name = "ktor-client-content-negotiation", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version.ref = "ktor" }
+androidx-animation = { group = "androidx.compose.animation", name = "animation" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
