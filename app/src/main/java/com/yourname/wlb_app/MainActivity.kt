@@ -72,28 +72,21 @@ fun AppNavigation() {
     NavHost(
         navController = navController,
         startDestination = "home",
-        enterTransition = { fadeIn(animationSpec = tween(180, easing = FastOutSlowInEasing)) },
-        exitTransition = { fadeOut(animationSpec = tween(120, easing = FastOutLinearInEasing)) },
-        popEnterTransition = { fadeIn(animationSpec = tween(180, easing = FastOutSlowInEasing)) },
-        popExitTransition = { fadeOut(animationSpec = tween(120, easing = FastOutLinearInEasing)) }
+        modifier = Modifier.background(Color(0xFF1C1B1F)),
+        enterTransition = { fadeIn(animationSpec = tween(260, easing = FastOutSlowInEasing)) },
+        exitTransition = { fadeOut(animationSpec = tween(200, easing = FastOutLinearInEasing)) },
+        popEnterTransition = { fadeIn(animationSpec = tween(260, easing = FastOutSlowInEasing)) },
+        popExitTransition = { fadeOut(animationSpec = tween(200, easing = FastOutLinearInEasing)) }
     ) {
         composable("home") { HomeScreen(navController) }
 
         composable(
             "entry/{entryId}",
             enterTransition = {
-                fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing)) +
-                        slideInVertically(
-                            initialOffsetY = { it / 5 },
-                            animationSpec = tween(200, easing = FastOutSlowInEasing)
-                        )
+                fadeIn(animationSpec = tween(260, easing = FastOutSlowInEasing))
             },
             popExitTransition = {
-                fadeOut(animationSpec = tween(150, easing = FastOutLinearInEasing)) +
-                        slideOutVertically(
-                            targetOffsetY = { it / 5 },
-                            animationSpec = tween(150, easing = FastOutLinearInEasing)
-                        )
+                fadeOut(animationSpec = tween(200, easing = FastOutLinearInEasing))
             }
         ) { backStackEntry ->
             val entryId = backStackEntry.arguments?.getString("entryId")?.toIntOrNull() ?: -1
@@ -103,17 +96,17 @@ fun AppNavigation() {
         composable(
             "category_detail/{categoryName}",
             enterTransition = {
-                fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing)) +
+                fadeIn(animationSpec = tween(260, easing = FastOutSlowInEasing)) +
                         slideInHorizontally(
                             initialOffsetX = { it / 4 },
-                            animationSpec = tween(200, easing = FastOutSlowInEasing)
+                            animationSpec = tween(260, easing = FastOutSlowInEasing)
                         )
             },
             popExitTransition = {
-                fadeOut(animationSpec = tween(150, easing = FastOutLinearInEasing)) +
+                fadeOut(animationSpec = tween(200, easing = FastOutLinearInEasing)) +
                         slideOutHorizontally(
                             targetOffsetX = { it / 4 },
-                            animationSpec = tween(150, easing = FastOutLinearInEasing)
+                            animationSpec = tween(200, easing = FastOutLinearInEasing)
                         )
             }
         ) { backStackEntry ->
@@ -121,7 +114,16 @@ fun AppNavigation() {
             CategoryDetailScreen(navController, categoryName)
         }
 
-        composable("categories") { CategoriesScreen(navController) }
+        composable(
+            "categories",
+            enterTransition = {
+                fadeIn(animationSpec = tween(260, easing = FastOutSlowInEasing))
+            },
+            popExitTransition = {
+                fadeOut(animationSpec = tween(200, easing = FastOutLinearInEasing))
+            }
+        ) { CategoriesScreen(navController) }
+
     }
 }
 
