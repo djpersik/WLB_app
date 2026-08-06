@@ -52,6 +52,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.material.icons.filled.DateRange
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -636,28 +637,35 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
         ) {
             Spacer(modifier = Modifier.height(12.dp))
 
-            Row(
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                shape = MaterialTheme.shapes.medium
             ) {
-                OutlinedButton(
-                    onClick = { showFilterFrom = true },
-                    modifier = Modifier.weight(1f)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = viewModel.filterFrom?.let { formatDateShort(it) } ?: "Від",
-                        fontSize = 13.sp
+                    TextButton(onClick = { showFilterFrom = true }) {
+                        Text(
+                            text = viewModel.filterFrom?.let { formatDateShort(it) } ?: "Від",
+                            fontSize = 14.sp
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.DateRange,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
                     )
-                }
-                Text("—", modifier = Modifier.align(Alignment.CenterVertically))
-                OutlinedButton(
-                    onClick = { showFilterTo = true },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(
-                        text = viewModel.filterTo?.let { formatDateShort(it) } ?: "До",
-                        fontSize = 13.sp
-                    )
+                    TextButton(onClick = { showFilterTo = true }) {
+                        Text(
+                            text = viewModel.filterTo?.let { formatDateShort(it) } ?: "До",
+                            fontSize = 14.sp
+                        )
+                    }
                 }
             }
 
@@ -1315,7 +1323,8 @@ fun CategoriesScreen(navController: NavHostController, viewModel: EntryViewModel
                     onValueChange = { newCategoryName = it },
                     label = { Text("Назва") },
                     modifier = Modifier.weight(1f),
-                    singleLine = true
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium
                 )
                 OutlinedTextField(
                     value = targetHours,
@@ -1327,7 +1336,8 @@ fun CategoriesScreen(navController: NavHostController, viewModel: EntryViewModel
                     },
                     label = { Text(if (isPositive) "Ціль (год)" else "Межа (год)") },
                     modifier = Modifier.width(110.dp),
-                    singleLine = true
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium
                 )
             }
 
@@ -1341,12 +1351,12 @@ fun CategoriesScreen(navController: NavHostController, viewModel: EntryViewModel
                 FilterChip(
                     selected = isPositive,
                     onClick = { isPositive = true },
-                    label = { Text("✅ Позитивна") }
+                    label = { Text("▲ Відновлення") }
                 )
                 FilterChip(
                     selected = !isPositive,
                     onClick = { isPositive = false },
-                    label = { Text("⚠️ Негативна") }
+                    label = { Text("▼ Витрата") }
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Button(
@@ -1387,9 +1397,9 @@ fun CategoriesScreen(navController: NavHostController, viewModel: EntryViewModel
                             Text(category.name, fontSize = 15.sp)
                             Text(
                                 text = if (category.isPositive)
-                                    "✅ ціль: ${category.targetHours} год"
+                                    "▲ ціль: ${category.targetHours} год"
                                 else
-                                    "⚠️ межа: ${category.targetHours} год",
+                                    "▼ межа: ${category.targetHours} год",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
