@@ -53,6 +53,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.material.icons.filled.DateRange
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1020,130 +1021,166 @@ fun EntryScreen(navController: NavHostController, entryId: Int = -1, viewModel: 
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(8.dp))
 
-            // --- ПОЧАТОК ---
-            Text("Початок", fontSize = 16.sp, modifier = Modifier.padding(start = 4.dp))
-            Spacer(modifier = Modifier.height(8.dp))
+// Модуль з часом
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Початок
+                    Text("Початок", fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Дата початку
+                        Surface(
+                            onClick = { openPicker = if (openPicker == "startDate") null else "startDate" },
+                            shape = MaterialTheme.shapes.medium,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.weight(1.5f)
+                        ) {
+                            Text(
+                                text = formatDate(startDateState.selectedDateMillis),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                fontSize = 15.sp
+                            )
+                        }
+                        // Час початку
+                        Surface(
+                            onClick = { openPicker = if (openPicker == "startTime") null else "startTime" },
+                            shape = MaterialTheme.shapes.medium,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = formatTime(startHour, startMinute),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                fontSize = 15.sp
+                            )
+                        }
+                    }
 
-            // Дата початку
-            PickerRow(
-                label = "Дата",
-                value = formatDate(startDateState.selectedDateMillis),
-                isOpen = openPicker == "startDate",
-                onClick = { openPicker = if (openPicker == "startDate") null else "startDate" }
-            )
-            if (openPicker == "startDate") {
-                DatePicker(
-                    state = startDateState,
-                    title = null,
-                    headline = null,
-                    showModeToggle = false,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+                    if (openPicker == "startDate") {
+                        DatePicker(
+                            state = startDateState,
+                            title = null,
+                            headline = null,
+                            showModeToggle = false,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    if (openPicker == "startTime") {
+                        TimeScrollPicker(
+                            hour = startHour,
+                            minute = startMinute,
+                            onHourChange = { startHour = it },
+                            onMinuteChange = { startMinute = it },
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
 
-            Spacer(modifier = Modifier.height(4.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-            // Час початку
-            PickerRow(
-                label = "Час",
-                value = formatTime(startHour, startMinute),
-                isOpen = openPicker == "startTime",
-                onClick = { openPicker = if (openPicker == "startTime") null else "startTime" }
-            )
-            if (openPicker == "startTime") {
-                TimeScrollPicker(
-                    hour = startHour,
-                    minute = startMinute,
-                    onHourChange = { startHour = it },
-                    onMinuteChange = { startMinute = it },
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            }
+                    // Кінець
+                    Text("Кінець", fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Surface(
+                            onClick = { openPicker = if (openPicker == "endDate") null else "endDate" },
+                            shape = MaterialTheme.shapes.medium,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.weight(1.5f)
+                        ) {
+                            Text(
+                                text = formatDate(endDateState.selectedDateMillis),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                fontSize = 15.sp
+                            )
+                        }
+                        Surface(
+                            onClick = { openPicker = if (openPicker == "endTime") null else "endTime" },
+                            shape = MaterialTheme.shapes.medium,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = formatTime(endHour, endMinute),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                fontSize = 15.sp
+                            )
+                        }
+                    }
 
-            Spacer(modifier = Modifier.height(8.dp))
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(8.dp))
+                    if (openPicker == "endDate") {
+                        DatePicker(
+                            state = endDateState,
+                            title = null,
+                            headline = null,
+                            showModeToggle = false,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    if (openPicker == "endTime") {
+                        TimeScrollPicker(
+                            hour = endHour,
+                            minute = endMinute,
+                            onHourChange = { endHour = it },
+                            onMinuteChange = { endMinute = it },
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
 
-            // --- КІНЕЦЬ ---
-            Text("Кінець", fontSize = 16.sp, modifier = Modifier.padding(start = 4.dp))
-            Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-            // Дата кінця
-            PickerRow(
-                label = "Дата",
-                value = formatDate(endDateState.selectedDateMillis),
-                isOpen = openPicker == "endDate",
-                onClick = { openPicker = if (openPicker == "endDate") null else "endDate" }
-            )
-            if (openPicker == "endDate") {
-                DatePicker(
-                    state = endDateState,
-                    title = null,
-                    headline = null,
-                    showModeToggle = false,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Час кінця
-            PickerRow(
-                label = "Час",
-                value = formatTime(endHour, endMinute),
-                isOpen = openPicker == "endTime",
-                onClick = { openPicker = if (openPicker == "endTime") null else "endTime" }
-            )
-            if (openPicker == "endTime") {
-                TimeScrollPicker(
-                    hour = endHour,
-                    minute = endMinute,
-                    onHourChange = { endHour = it },
-                    onMinuteChange = { endMinute = it },
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text("Повторювати за період", fontSize = 15.sp)
+                    // Тривалість
                     Text(
-                        if (isRepeating) "Щодня з ${String.format("%02d:%02d", startHour, startMinute)} до ${String.format("%02d:%02d", endHour, endMinute)}"
-                        else "Створить запис для кожного дня",
-                        fontSize = 12.sp,
+                        text = "Тривалість: ${durationLabel(startMillis, endMillis)}",
+                        fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-                Switch(
-                    checked = isRepeating,
-                    onCheckedChange = { isRepeating = it }
-                )
-            }
 
-            if (isRepeating) {
-                Spacer(modifier = Modifier.height(8.dp))
-                val startDate = startDateState.selectedDateMillis ?: System.currentTimeMillis()
-                val endDate = endDateState.selectedDateMillis ?: System.currentTimeMillis()
-                val daysCount = ((endDate - startDate) / (24 * 60 * 60 * 1000L)).toInt() + 1
-                Text(
-                    if (daysCount > 0) "Буде створено $daysCount записів"
-                    else "⚠️ Дата кінця раніше початку",
-                    fontSize = 13.sp,
-                    color = if (daysCount > 0) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(start = 4.dp)
-                )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                    // Повторювати за період
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Повторювати за період", fontSize = 14.sp)
+                            Text(
+                                if (isRepeating) "Щодня з ${String.format(Locale.getDefault(), "%02d:%02d", startHour, startMinute)} до ${String.format(Locale.getDefault(), "%02d:%02d", endHour, endMinute)}"
+                                else "Створить запис для кожного дня",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = isRepeating,
+                            onCheckedChange = { isRepeating = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color(0xFF4CAF50),
+                                checkedTrackColor = Color(0xFF4CAF50).copy(alpha = 0.5f),
+                                uncheckedThumbColor = Color(0xFF9E9E9E),
+                                uncheckedTrackColor = Color(0xFF616161)
+                            )
+                        )
+                    }
+
+                    if (isRepeating) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        val startDate = startDateState.selectedDateMillis ?: System.currentTimeMillis()
+                        val endDate = endDateState.selectedDateMillis ?: System.currentTimeMillis()
+                        val daysCount = ((endDate - startDate) / (24 * 60 * 60 * 1000L)).toInt() + 1
+                        Text(
+                            if (daysCount > 0) "Буде створено $daysCount записів"
+                            else "⚠️ Дата кінця раніше початку",
+                            fontSize = 13.sp,
+                            color = if (daysCount > 0) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
