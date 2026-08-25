@@ -63,6 +63,9 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -590,6 +593,14 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
             isLoadingAdvice = false
         }
     }
+
+    fun isTutorialShown(): Boolean {
+        return prefs.getBoolean("tutorial_shown", false)
+    }
+
+    fun setTutorialShown() {
+        prefs.edit().putBoolean("tutorial_shown", true).apply()
+    }
 }
 
 // ===== HomeScreen =====
@@ -611,6 +622,15 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
     val categoriesSize = viewModel.categories.size
     val entriesSize = viewModel.entries.size
 
+
+// Координати елементів
+    var wlbCardBounds by remember { mutableStateOf(Rect.Zero) }
+    var filterBounds by remember { mutableStateOf(Rect.Zero) }
+    var fabBounds by remember { mutableStateOf(Rect.Zero) }
+    var settingsBounds by remember { mutableStateOf(Rect.Zero) }
+
+    var showTutorial by remember { mutableStateOf(!viewModel.isTutorialShown()) }
+
     LaunchedEffect(categoriesSize, entriesSize) {
         if (categoriesSize > 0 && viewModel.aiAdviceShort == null) {
             viewModel.fetchAdvice()
@@ -622,7 +642,12 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
             TopAppBar(
                 title = { Text("Work-Life Balance") },
                 actions = {
-                    IconButton(onClick = { navController.navigate("categories") }) {
+                    IconButton(
+                        onClick = { navController.navigate("categories") },
+                        modifier = Modifier.onGloballyPositioned { coords ->
+                            settingsBounds = coords.boundsInRoot()
+                        }
+                    ) {
                         Icon(Icons.Default.Settings, contentDescription = "Категорії")
                     }
                 }
@@ -633,6 +658,8 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
                 navController.navigate("entry/-1") {
                     launchSingleTop = true
                 }
+            }, modifier = Modifier.onGloballyPositioned { coords ->
+                fabBounds = coords.boundsInRoot()
             }) {
                 Icon(Icons.Default.Add, contentDescription = "Додати запис")
             }
@@ -812,11 +839,41 @@ fun HomeScreen(navController: NavHostController, viewModel: EntryViewModel = vie
             }
         ) { DatePicker(state = filterToState) }
     }
+    if (showTutorial) {
+        TutorialOverlay(
+            steps = listOf(
+                TutorialStep(
+                    title = "WLB Індекс",
+                    description = "Це твій персональний індекс балансу 0-100. Чим вищий — тим кращий баланс між роботою і відпочинком.",
+                    targetBounds = wlbCardBounds
+                ),
+                TutorialStep(
+                    title = "Фільтр дат",
+                    description = "Вибирай період для перегляду статистики. Натисни на дату щоб змінити.",
+                    targetBounds = filterBounds
+                ),
+                TutorialStep(
+                    title = "Категорії",
+                    description = "Налаштуй свої категорії активностей — сон, робота, відпочинок та інші.",
+                    targetBounds = settingsBounds
+                ),
+                TutorialStep(
+                    title = "Додати запис",
+                    description = "Натисни + щоб додати новий запис. Вкажи категорію, час початку і кінця.",
+                    targetBounds = fabBounds
+                )
+            ),
+            onFinish = {
+                viewModel.setTutorialShown()
+                showTutorial = false
+            }
+        )
+    }
 }
 
 // WLB індекс картка
 @Composable
-fun WLBIndexCard(wlbIndex: Double, history: List<Pair<Long, Double>>) {
+fun WLBIndexCard(wlbIndex: Double, history: List<Pair<Long, Double>>, modifier: Modifier = Modifier) {
     val color = when {
         wlbIndex >= 70 -> Color(0xFF2E7D32)
         wlbIndex >= 40 -> Color(0xFFFF8F00)
