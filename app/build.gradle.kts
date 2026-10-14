@@ -16,7 +16,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.yourname.wlb_app"
+        applicationId = "com.vsfennec.wlb"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
