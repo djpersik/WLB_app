@@ -11,6 +11,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import io.ktor.client.statement.bodyAsText
 
+val apiKey = BuildConfig.GEMINI_API_KEY
+
 @Serializable
 data class GeminiRequest(val contents: List<GeminiContent>)
 
@@ -42,7 +44,7 @@ object GeminiService {
     suspend fun getStructuredAdvice(prompt: String): AdviceResponse {
         return try {
             val rawResponse = client.post(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${BuildConfig.GEMINI_API_KEY}"
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${apiKey}"
             ) {
                 contentType(ContentType.Application.Json)
                 setBody(GeminiRequest(
