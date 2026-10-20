@@ -30,7 +30,7 @@ android {
         if (localPropsFile.exists()) {
             localProps.load(localPropsFile.inputStream())
         }
-        buildConfigField("String", "GEMINI_API_KEY", "\"${localProps.getProperty("GEMINI_API_KEY", "")}\"")
+        buildConfigField("String", "PROXY_URL", "\"https://openai-proxy.workerfennec.workers.dev/\"")
     }
 
 

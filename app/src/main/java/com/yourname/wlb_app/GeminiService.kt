@@ -3,30 +3,24 @@ package com.yourname.wlb_app
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.android.*
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import io.ktor.client.statement.bodyAsText
 
-val apiKey = BuildConfig.GEMINI_API_KEY
-
-@Serializable
-data class GeminiRequest(val contents: List<GeminiContent>)
+private const val PROXY_URL = "https://openai-proxy.workerfennec.workers.dev/"
 
 @Serializable
-data class GeminiContent(val parts: List<GeminiPart>)
-
-@Serializable
-data class GeminiPart(val text: String)
-
-@Serializable
-data class GeminiResponse(val candidates: List<GeminiCandidate>? = null)
-
-@Serializable
-data class GeminiCandidate(val content: GeminiContent? = null)
+data class AdviceRequest(
+    val days: Int,
+    val currentStats: String,
+    val weekStats: String,
+    val monthStats: String,
+    val wlb: Int
+)
 
 @Serializable
 data class AdviceResponse(
@@ -35,46 +29,36 @@ data class AdviceResponse(
 )
 
 object GeminiService {
+    private val json = Json { ignoreUnknownKeys = true }
+
     private val client = HttpClient(Android) {
-        install(ContentNegotiation) {
-            json(Json { ignoreUnknownKeys = true })
+        install(ContentNegotiation) { json(json) }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 30_000
+            connectTimeoutMillis = 15_000
         }
     }
 
-    suspend fun getStructuredAdvice(prompt: String): AdviceResponse {
+    suspend fun getStructuredAdvice(
+        days: Int,
+        currentStats: String,
+        weekStats: String,
+        monthStats: String,
+        wlb: Int
+    ): AdviceResponse {
         return try {
-            val rawResponse = client.post(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${apiKey}"
-            ) {
+            val response = client.post(PROXY_URL) {
                 contentType(ContentType.Application.Json)
-                setBody(GeminiRequest(
-                    contents = listOf(GeminiContent(
-                        parts = listOf(GeminiPart(text = prompt))
-                    ))
-                ))
+                setBody(AdviceRequest(days, currentStats, weekStats, monthStats, wlb))
             }
-            val bodyText = rawResponse.bodyAsText()
-            android.util.Log.d("Gemini", "Raw response: $bodyText")
 
-            val response = Json { ignoreUnknownKeys = true }.decodeFromString<GeminiResponse>(bodyText)
-            val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text ?: ""
-
-            android.util.Log.d("Gemini", "Text: $text")
-
-            // текст вже є JSON рядком — парсимо напряму
-            try {
-                Json { ignoreUnknownKeys = true }.decodeFromString<AdviceResponse>(text)
-            } catch (e: Exception) {
-                // якщо не вдалось — шукаємо JSON в тексті
-                val start = text.indexOf('{')
-                val end = text.lastIndexOf('}')
-                if (start != -1 && end != -1 && end > start) {
-                    val jsonPart = text.substring(start, end + 1)
-                    android.util.Log.d("Gemini", "JSON part: $jsonPart")
-                    Json { ignoreUnknownKeys = true }.decodeFromString<AdviceResponse>(jsonPart)
-                } else {
-                    AdviceResponse(short = text, detailed = text)
-                }
+            if (response.status != HttpStatusCode.OK) {
+                AdviceResponse(
+                    short = "Помилка отримання поради",
+                    detailed = "Сервер повернув код ${response.status.value}"
+                )
+            } else {
+                response.body<AdviceResponse>()
             }
         } catch (e: Exception) {
             android.util.Log.e("Gemini", "Error: ${e.message}")

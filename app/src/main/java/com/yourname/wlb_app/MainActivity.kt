@@ -66,6 +66,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -566,31 +567,22 @@ class EntryViewModel(application: Application) : AndroidViewModel(application) {
                 } год/день"
             }
 
-            val days = daysBetween(filterFrom, filterTo)
-            val wlb = String.format(java.util.Locale.getDefault(), "%.0f", calculateWLBIndex())
+            val days = daysBetween(filterFrom, filterTo).toInt()
+            val wlb = calculateWLBIndex().roundToInt()
 
-            val prompt = """
-        Ти — досвідчений персональний коуч із продуктивності та біохакінгу. Проаналізуй статистику і поверни ТІЛЬКИ валідний JSON без жодного тексту до чи після, без markdown, без ```json.
-    
-        Вибраний період ($days днів):
-        $currentStats
-    
-        Останні 7 днів:
-        $weekStats
-    
-        Останні 30 днів:
-        $monthStats
-    
-        WLB індекс: $wlb/100
-    
-        Поверни JSON у форматі:
-        {"short":"2-3 речення. Головна проблема і одна конкретна дія з числом або часом.","detailed":"📊 Діагностика: ...\n\n🔬 Наука: 1-2 факти пов'язані з проблемою.\n\n🎯 План:\n1. ...\n2. ...\n3. ..."}
-        """.trimIndent()
-
-            val result = GeminiService.getStructuredAdvice(prompt)
-            aiAdviceShort = result.short
-            aiAdviceDetailed = result.detailed
-            isLoadingAdvice = false
+            try {
+                val result = GeminiService.getStructuredAdvice(
+                    days = days,
+                    currentStats = currentStats,
+                    weekStats = weekStats,
+                    monthStats = monthStats,
+                    wlb = wlb
+                )
+                aiAdviceShort = result.short
+                aiAdviceDetailed = result.detailed
+            } finally {
+                isLoadingAdvice = false
+            }
         }
     }
 
